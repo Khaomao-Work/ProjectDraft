@@ -49,7 +49,7 @@ def solve_itinerary(
         "close_time": close_time_list, "max_budget": max_budget
     }
 
-    results = run_optimize_ortools(data)
+    results = run_optimize(data)
     if not results.get("daily_routes") or len(results["daily_routes"]) == 0: return []
 
     itineraries, route_plan = [], []
@@ -166,7 +166,7 @@ def run_optimize_ortools(data):
                 results["daily_routes"].append(formatted_route)
 
     return results
-    
+
     def safe_normalize(expr, min_val, max_val):
         diff = max_val - min_val
         return 0 if diff <= 1e-6 else (expr - min_val) / diff
