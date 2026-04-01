@@ -49,7 +49,7 @@ def solve_itinerary(
         "close_time": close_time_list, "max_budget": max_budget
     }
 
-    results = run_optimize(data)
+    results = run_optimize_ortools(data)
     if not results.get("daily_routes") or len(results["daily_routes"]) == 0: return []
 
     itineraries, route_plan = [], []
