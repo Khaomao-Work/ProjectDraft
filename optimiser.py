@@ -154,32 +154,44 @@ def run_optimize_ortools(data):
     # 8. สั่งให้ระบบเริ่มประมวลผล
     solution = routing.SolveWithParameters(search_parameters)
 
-    # 9. ดึงผลลัพธ์ออกมาจัดรูปแบบ
+# 9. ดึงผลลัพธ์ออกมาจัดรูปแบบ
     results = {"daily_routes": [], "total_distance": 0}
     if solution:
+        total_dist = 0  # 👈 สร้างตัวแปรมารอเก็บระยะทางรวม
+        
         for vehicle_id in range(num_days):
             index = routing.Start(vehicle_id)
-            route_distance = 0
             route_for_vehicle = []
+            
             while not routing.IsEnd(index):
                 node_index = manager.IndexToNode(index)
                 route_for_vehicle.append(node_index)
-                index = solution.Value(routing.NextVar(index))
-                route_distance += routing.GetArcCostForVehicle(previous_index, index, 0)
+                
+                # --- ส่วนที่เพิ่มใหม่: คำนวณระยะทาง ---
+                next_index = solution.Value(routing.NextVar(index))
+                next_node = manager.IndexToNode(next_index)
+                
+                # ดึงระยะทางจากตาราง data['d'] มาบวกสะสม (สมมติว่าหน่วยเป็นกิโลเมตรอยู่แล้ว)
+                if 'd' in data:
+                    total_dist += data['d'][node_index][next_node]
+                # ---------------------------------
+                
+                index = next_index # ขยับไปยังจุดถัดไป
+                
             # ใส่จุดสิ้นสุด (กลับโรงแรม)
             route_for_vehicle.append(manager.IndexToNode(index))
             
             # เก็บเฉพาะเส้นทางที่มีการเดินทางจริง (ไม่ใช่อยู่แต่โรงแรม)
             if len(route_for_vehicle) > 2:
-                # นำไปแปลงเป็น Format (ต้นทาง, ปลายทาง) แบบที่โค้ดเก่าคุณทำไว้
+                # นำไปแปลงเป็น Format (ต้นทาง, ปลายทาง)
                 formatted_route = [(route_for_vehicle[i], route_for_vehicle[i+1]) for i in range(len(route_for_vehicle)-1)]
-                results= { ["daily_routes"].append(formatted_route),
-                          "total_distance": route_distance / 1000
-                {
-            
+                results["daily_routes"].append(formatted_route)
+
+        # 👈 นำระยะทางรวมทั้งหมดไปใส่ใน dictionary ก่อนส่งกลับ
+        results["total_distance"] = total_dist 
 
     return results
-
+    
     def safe_normalize(expr, min_val, max_val):
         diff = max_val - min_val
         return 0 if diff <= 1e-6 else (expr - min_val) / diff
