@@ -75,6 +75,7 @@ from ortools.constraint_solver import pywrapcp
 def run_optimize_ortools(data):
     from ortools.constraint_solver import pywrapcp
     from ortools.constraint_solver import routing_enums_pb2
+    import math  # 👈 นำเข้า math มาเพื่อเช็คค่า Infinity
 
     time_matrix = data['t']
     visiting_time = data['visiting_time']
@@ -92,6 +93,11 @@ def run_optimize_ortools(data):
         to_node = manager.IndexToNode(to_index)
         travel_time = time_matrix[from_node][to_node]
         visit_time = visiting_time[from_node]
+        
+        # 🛡️ ป้องกันบั๊ก Infinity: ถ้า API หาทางไปไม่ได้ ให้โยนเวลาปรับล่วงหน้าไปเลย
+        if travel_time == float('inf') or math.isinf(travel_time):
+            return 9999999  # ให้ค่าเวลาเยอะสุดขีด เพื่อให้ระบบปัดตกเส้นทางนี้
+            
         return int((travel_time + visit_time) * 60) 
 
     transit_callback_index = routing.RegisterTransitCallback(time_callback)
@@ -100,7 +106,7 @@ def run_optimize_ortools(data):
     time = "Time"
     routing.AddDimension(
         transit_callback_index,
-        1440, 
+        1440,  # ยอมให้รอเวลาเปิดได้ 24 ชั่วโมง
         int(max_daily_time * 60), 
         False, 
         time,
@@ -115,7 +121,6 @@ def run_optimize_ortools(data):
         node_open = int(open_time[node] * 60)
         node_close = int(close_time[node] * 60)
         
-        # ป้องกันบั๊กเวลาเปิด-ปิด
         if node_open > node_close:
             node_close = 1440
         elif node_open == node_close:
@@ -136,20 +141,19 @@ def run_optimize_ortools(data):
 
     solution = routing.SolveWithParameters(search_parameters)
 
-    # --- 9. ดึงผลลัพธ์ (เพิ่มการคำนวณระยะทางและเวลาให้แล้ว) ---
+    # 9. ดึงผลลัพธ์ออกมา
     results = {
         "daily_routes": [], 
         "total_distance": 0,
-        "daily_total_time_spent": [] # กล่องเก็บเวลา
+        "daily_total_time_spent": []
     }
     
     if solution:
         total_dist = 0
-        
         for vehicle_id in range(num_days):
             index = routing.Start(vehicle_id)
             route_for_vehicle = []
-            day_time = 0 # สร้างตัวแปรมาเก็บเวลาของแต่ละวัน
+            day_time = 0 
             
             while not routing.IsEnd(index):
                 node_index = manager.IndexToNode(index)
@@ -158,10 +162,14 @@ def run_optimize_ortools(data):
                 next_index = solution.Value(routing.NextVar(index))
                 next_node = manager.IndexToNode(next_index)
                 
-                # บวกระยะทางสะสม
-                total_dist += data['d'][node_index][next_node]
-                # บวกเวลาสะสม (เวลาเดินทาง + เวลาเที่ยว)
-                day_time += data['t'][node_index][next_node] + data['visiting_time'][node_index]
+                # 🛡️ ป้องกันบั๊ก Infinity ตอนบวกเลข: จะบวกก็ต่อเมื่อไม่ใช่ Infinity
+                dist = data['d'][node_index][next_node]
+                t_time = data['t'][node_index][next_node]
+                
+                if dist != float('inf') and not math.isinf(dist):
+                    total_dist += dist
+                if t_time != float('inf') and not math.isinf(t_time):
+                    day_time += t_time + data['visiting_time'][node_index]
                 
                 index = next_index
                 
@@ -172,7 +180,6 @@ def run_optimize_ortools(data):
                 results["daily_routes"].append(formatted_route)
                 results["daily_total_time_spent"].append(day_time)
 
-        # บันทึกค่าลง Dictionary ก่อนส่งคืนกลับไป
         results["total_distance"] = total_dist
 
     return results
