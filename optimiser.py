@@ -122,10 +122,18 @@ def run_optimize_ortools(data):
             continue # ข้ามโรงแรมไปก่อน หรือจะเซ็ตเวลาออกจากโรงแรมก็ได้
         
         index = manager.NodeToIndex(node)
-        # แปลงเวลาเปิดปิดเป็นนาที
-        node_open = int(open_time[node] * 60)
-        node_close = int(close_time[node] * 60)
-        time_dimension.CumulVar(index).SetRange(int(node_open), int(node_close))
+    # แปลงเวลาเปิดปิดเป็นนาที
+    node_open = int(open_time[node] * 60)
+    node_close = int(close_time[node] * 60)
+
+    # --- เพิ่มโค้ด 3 บรรทัดนี้เพื่อป้องกันบั๊ก CP Solver fail ---
+    if node_open > node_close:
+        node_close = 1440  # ถ้าเปิดดึกกว่าปิด (เปิดข้ามคืน) อนุโลมให้ปิดตอนเที่ยงคืน (24 * 60 นาที)
+    elif node_open == node_close:
+        node_close = 1440  # ถ้าเปิด-ปิดเวลาเดียวกัน (มักจะแปลว่าเปิด 24 ชม.) ให้ขยายเวลาปิดไปเที่ยงคืน
+    # -----------------------------------------------------
+
+    time_dimension.CumulVar(index).SetRange(node_open, node_close)
 
     # 6. การตั้งค่าให้ "บางสถานที่ไม่ไปก็ได้" (Disjunctions)
     # แทนที่จะบังคับให้ไปทุกที่ เรายอมให้ข้ามได้ถ้าเวลาไม่พอ โดยแลกกับค่าปรับ (Penalty)
