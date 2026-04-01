@@ -68,7 +68,8 @@ def solve_itinerary(
         "total_time": round(sum(results.get("daily_total_time_spent", [])), 2), "daily_routes": route_plan
     })
     return itineraries
-
+from ortools.constraint_solver import routing_enums_pb2
+from ortools.constraint_solver import pywrapcp
 def run_optimize_ortools(data):
     # 1. จัดเตรียมข้อมูลเบื้องต้น
     # ดึงข้อมูลจาก data dictionary ที่คุณจัดเตรียมไว้ใน solve_itinerary
