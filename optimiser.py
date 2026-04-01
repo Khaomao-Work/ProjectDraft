@@ -71,102 +71,112 @@ def solve_itinerary(
 
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
-
 def run_optimize_ortools(data):
-    # 1. จัดเตรียมข้อมูลเบื้องต้น
-    # ดึงข้อมูลจาก data dictionary ที่คุณจัดเตรียมไว้ใน solve_itinerary
+    from ortools.constraint_solver import pywrapcp
+    from ortools.constraint_solver import routing_enums_pb2
+    import math
+
     time_matrix = data['t']
     visiting_time = data['visiting_time']
     open_time = data['open_time']
     close_time = data['close_time']
     num_days = data['day']
     max_daily_time = data['T_max']
-    hotel_index = data['hotel_indices'][0] # สมมติว่ามีโรงแรม 1 แห่งเป็นจุดเริ่มต้น/สิ้นสุด
+    hotel_index = data['hotel_indices'][0] 
     
-    # แปลงเวลาให้เป็นหน่วยเดียวกัน (เช่น นาที หรือ ชั่วโมง) ใน OR-Tools ควรใช้ Integer
-    # สมมติว่าเราคูณ 60 เพื่อแปลงชั่วโมงเป็นนาที ให้เป็นจำนวนเต็ม
-    
-    # 2. สร้าง Routing Index Manager และ Routing Model
     manager = pywrapcp.RoutingIndexManager(len(time_matrix), num_days, hotel_index)
     routing = pywrapcp.RoutingModel(manager)
 
-    # 3. สร้าง Callback สำหรับคำนวณ "เวลาที่ใช้ทั้งหมด" (เวลาเดินทาง + เวลาเที่ยว)
     def time_callback(from_index, to_index):
-        # แปลง Index ของ OR-Tools กลับเป็น Index ของตารางข้อมูลเรา
         from_node = manager.IndexToNode(from_index)
         to_node = manager.IndexToNode(to_index)
-        
-        # เวลาที่ใช้ = เวลาเดินทางจาก from ไป to + เวลาที่แวะเที่ยวในจุด from
-        # (ถ้า from เป็นโรงแรม เวลาเที่ยว = 0)
         travel_time = time_matrix[from_node][to_node]
         visit_time = visiting_time[from_node]
-        return int((travel_time + visit_time) * 60) # ตัวอย่างแปลงเป็นนาที
+        
+        # ป้องกันบั๊ก Infinity (ถ้าแผนที่หาทางไปไม่ได้)
+        if travel_time == float('inf') or math.isinf(travel_time):
+            return 9999999
+            
+        return int((travel_time + visit_time) * 60) 
 
     transit_callback_index = routing.RegisterTransitCallback(time_callback)
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
-    # 4. เพิ่ม Time Dimension (จัดการเวลาเปิด-ปิด และเวลาเที่ยวสูงสุดต่อวัน)
     time = "Time"
     routing.AddDimension(
         transit_callback_index,
-        30,  # Allowable waiting time (ยอมให้รอได้สูงสุดกี่นาทีก่อนสถานที่เปิด)
-        int(max_daily_time * 60), # Maximum time per vehicle (เวลาเที่ยวสูงสุดใน 1 วัน)
-        False,  # Don't force start cumul to zero (ให้เริ่มออกเดินทางตอนไหนก็ได้)
+        1440,  # ✅ แก้แล้ว: ยอมให้รอเวลาเปิดได้ 24 ชั่วโมง (1440 นาที)
+        int(max_daily_time * 60), 
+        False, 
         time,
     )
     time_dimension = routing.GetDimensionOrDie(time)
 
-    # 5. ใส่ Time Windows (เวลาเปิด-ปิดของแต่ละสถานที่)
     for node in range(len(time_matrix)):
         if node == hotel_index:
-            continue # ข้ามโรงแรมไปก่อน หรือจะเซ็ตเวลาออกจากโรงแรมก็ได้
+            continue 
         
         index = manager.NodeToIndex(node)
-        # แปลงเวลาเปิดปิดเป็นนาที
         node_open = int(open_time[node] * 60)
         node_close = int(close_time[node] * 60)
+        
+        # ป้องกันบั๊กเปิด-ปิด
+        if node_open >= node_close:
+            node_close = 1440
+            
         time_dimension.CumulVar(index).SetRange(node_open, node_close)
 
-    # 6. การตั้งค่าให้ "บางสถานที่ไม่ไปก็ได้" (Disjunctions)
-    # แทนที่จะบังคับให้ไปทุกที่ เรายอมให้ข้ามได้ถ้าเวลาไม่พอ โดยแลกกับค่าปรับ (Penalty)
-    # ยิ่งสถานที่ไหนคะแนน (Score) สูง ค่าปรับก็ควรจะสูงตาม เพื่อให้ระบบพยายามจัดลงตาราง
     penalty = 10000 
     for node in range(len(time_matrix)):
         if node != hotel_index:
             index = manager.NodeToIndex(node)
             routing.AddDisjunction([index], penalty)
 
-    # 7. กำหนดกลยุทธ์การค้นหาคำตอบ (Search Parameters)
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
-    # กำหนดเวลาให้ AI คิด (เช่น 5 วินาที)
     search_parameters.time_limit.seconds = 5 
 
-    # 8. สั่งให้ระบบเริ่มประมวลผล
     solution = routing.SolveWithParameters(search_parameters)
 
-    # 9. ดึงผลลัพธ์ออกมาจัดรูปแบบ
-    results = {"daily_routes": [], "total_distance": 0}
+    # ✅ แก้แล้ว: ดึงผลลัพธ์ระยะทางและเวลาออกมา
+    results = {"daily_routes": [], "total_distance": 0, "daily_total_time_spent": []}
+    
     if solution:
+        total_dist = 0
         for vehicle_id in range(num_days):
             index = routing.Start(vehicle_id)
             route_for_vehicle = []
+            day_time = 0 
+            
             while not routing.IsEnd(index):
                 node_index = manager.IndexToNode(index)
                 route_for_vehicle.append(node_index)
-                index = solution.Value(routing.NextVar(index))
-            # ใส่จุดสิ้นสุด (กลับโรงแรม)
+                
+                next_index = solution.Value(routing.NextVar(index))
+                next_node = manager.IndexToNode(next_index)
+                
+                # บวกระยะทางและเวลา (เช็คก่อนว่าไม่ใช่ค่า Infinity)
+                dist = data['d'][node_index][next_node]
+                t_time = data['t'][node_index][next_node]
+                
+                if dist != float('inf') and not math.isinf(dist):
+                    total_dist += dist
+                if t_time != float('inf') and not math.isinf(t_time):
+                    day_time += t_time + data['visiting_time'][node_index]
+                
+                index = next_index
+                
             route_for_vehicle.append(manager.IndexToNode(index))
             
-            # เก็บเฉพาะเส้นทางที่มีการเดินทางจริง (ไม่ใช่อยู่แต่โรงแรม)
             if len(route_for_vehicle) > 2:
-                # นำไปแปลงเป็น Format (ต้นทาง, ปลายทาง) แบบที่โค้ดเก่าคุณทำไว้
                 formatted_route = [(route_for_vehicle[i], route_for_vehicle[i+1]) for i in range(len(route_for_vehicle)-1)]
                 results["daily_routes"].append(formatted_route)
+                results["daily_total_time_spent"].append(day_time)
+
+        results["total_distance"] = total_dist
 
     return results
-
     def safe_normalize(expr, min_val, max_val):
         diff = max_val - min_val
         return 0 if diff <= 1e-6 else (expr - min_val) / diff
