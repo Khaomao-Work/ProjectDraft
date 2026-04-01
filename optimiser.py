@@ -100,7 +100,7 @@ def run_optimize_ortools(data):
     time = "Time"
     routing.AddDimension(
         transit_callback_index,
-        30, 
+        1440, 
         int(max_daily_time * 60), 
         False, 
         time,
