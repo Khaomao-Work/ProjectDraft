@@ -159,11 +159,13 @@ def run_optimize_ortools(data):
     if solution:
         for vehicle_id in range(num_days):
             index = routing.Start(vehicle_id)
+            route_distance = 0
             route_for_vehicle = []
             while not routing.IsEnd(index):
                 node_index = manager.IndexToNode(index)
                 route_for_vehicle.append(node_index)
                 index = solution.Value(routing.NextVar(index))
+                route_distance += routing.GetArcCostForVehicle(previous_index, index, 0)
             # ใส่จุดสิ้นสุด (กลับโรงแรม)
             route_for_vehicle.append(manager.IndexToNode(index))
             
@@ -171,7 +173,10 @@ def run_optimize_ortools(data):
             if len(route_for_vehicle) > 2:
                 # นำไปแปลงเป็น Format (ต้นทาง, ปลายทาง) แบบที่โค้ดเก่าคุณทำไว้
                 formatted_route = [(route_for_vehicle[i], route_for_vehicle[i+1]) for i in range(len(route_for_vehicle)-1)]
-                results["daily_routes"].append(formatted_route)
+                results= { ["daily_routes"].append(formatted_route),
+                          "total_distance": route_distance / 1000
+                {
+            
 
     return results
 
