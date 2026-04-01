@@ -125,7 +125,7 @@ def run_optimize_ortools(data):
         # แปลงเวลาเปิดปิดเป็นนาที
         node_open = int(open_time[node] * 60)
         node_close = int(close_time[node] * 60)
-        time_dimension.CumulVar(index).SetRange(node_open, node_close)
+        time_dimension.CumulVar(index).SetRange(int(node_open), int(node_close))
 
     # 6. การตั้งค่าให้ "บางสถานที่ไม่ไปก็ได้" (Disjunctions)
     # แทนที่จะบังคับให้ไปทุกที่ เรายอมให้ข้ามได้ถ้าเวลาไม่พอ โดยแลกกับค่าปรับ (Penalty)
